@@ -1,0 +1,2200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="CA Pricing">
+<meta name="theme-color" content="#0f172a">
+<meta name="mobile-web-app-capable" content="yes">
+<title>Comfort Air Pricing Pro</title>
+<link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect fill='%230f172a' width='100' height='100' rx='22'/><text y='.88em' x='.12em' font-size='72'>❄️</text></svg>">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script>
+tailwind.config={theme:{extend:{colors:{brand:'#1e3a5f',brandLight:'#2563eb'}}}}
+</script>
+<style>
+*{-webkit-tap-highlight-color:transparent;box-sizing:border-box}
+html,body{margin:0;padding:0;overscroll-behavior:none;-webkit-text-size-adjust:100%;font-family:-apple-system,BlinkMacSystemFont,'SF Pro Display','Segoe UI',Roboto,sans-serif}
+body{background:#f1f5f9;padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)}
+input[type=range]{-webkit-appearance:none;height:6px;border-radius:9px;background:#e2e8f0;outline:none;touch-action:none;width:100%}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:26px;height:26px;border-radius:50%;background:#2563eb;cursor:pointer;border:3px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.25)}
+input[type=number]{font-size:16px!important;-moz-appearance:textfield}
+input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{opacity:1;height:24px}
+.tab-content{animation:fadeUp .25s ease-out}
+@keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+@keyframes shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}
+#splash{position:fixed;inset:0;z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;background:linear-gradient(145deg,#0f172a 0%,#1e3a5f 50%,#0f172a 100%);color:#fff;transition:opacity .4s}
+#splash.done{opacity:0;pointer-events:none}
+.splash-logo{font-size:56px;margin-bottom:12px;animation:pulse 2s ease-in-out infinite}
+@keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.08)}}
+.splash-bar{width:140px;height:3px;border-radius:3px;background:#1e293b;overflow:hidden;margin-top:16px}
+.splash-fill{height:100%;width:0%;background:linear-gradient(90deg,#3b82f6,#06b6d4);border-radius:3px;animation:load 1.2s ease-out forwards}
+@keyframes load{to{width:100%}}
+.bottom-nav{position:fixed;bottom:0;left:0;right:0;background:rgba(255,255,255,.92);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-top:1px solid #e2e8f0;padding-bottom:env(safe-area-inset-bottom);z-index:100}
+.card{background:#fff;border-radius:14px;padding:14px;box-shadow:0 1px 3px rgba(0,0,0,.06);border:1px solid #f1f5f9}
+.stat-card{border-radius:14px;padding:12px;border-left:4px solid}
+.gauge-wrap{display:flex;flex-direction:column;align-items:center}
+</style>
+</head>
+<body>
+<div id="splash">
+  <div class="splash-logo">❄️</div>
+  <div style="font-size:20px;font-weight:700;letter-spacing:-.5px">Comfort Air</div>
+  <div style="font-size:12px;color:#93c5fd;margin-top:2px">Net Profit Pricing Pro</div>
+  <div class="splash-bar"><div class="splash-fill"></div></div>
+</div>
+<div id="root"></div>
+
+<script>const {
+  useState,
+  useMemo,
+  useCallback,
+  useRef,
+  useEffect
+} = React;
+
+/* ═══ FORMATTERS ═══ */
+const fmt = v => `${Math.round(v).toLocaleString()}`;
+const fmtK = v => v >= 1000 ? `${(v / 1000).toFixed(v >= 10000 ? 0 : 1)}K` : fmt(v);
+const fmtD = v => `${v.toFixed(2)}`;
+const fmtP = v => `${(v * 100).toFixed(1)}%`;
+const cl = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+const C = {
+  green: "#22c55e",
+  red: "#ef4444",
+  amber: "#f59e0b",
+  blue: "#3b82f6",
+  indigo: "#6366f1",
+  purple: "#8b5cf6",
+  slate: "#64748b",
+  cyan: "#06b6d4",
+  orange: "#f97316",
+  pink: "#ec4899",
+  teal: "#14b8a6",
+  lime: "#84cc16",
+  sky: "#0ea5e9",
+  rose: "#f43f5e"
+};
+
+/* ═══ SVG CHART COMPONENTS ═══ */
+const ChartBox = ({
+  height = 200,
+  children
+}) => {
+  const ref = useRef(null);
+  const [w, setW] = useState(300);
+  useEffect(() => {
+    if (!ref.current) return;
+    const ro = new ResizeObserver(es => {
+      for (const e of es) setW(e.contentRect.width);
+    });
+    ro.observe(ref.current);
+    setW(ref.current.offsetWidth);
+    return () => ro.disconnect();
+  }, []);
+  return /*#__PURE__*/React.createElement("div", {
+    ref: ref,
+    style: {
+      width: '100%'
+    }
+  }, children(w, height));
+};
+const SvgBar = ({
+  data,
+  keys,
+  colors,
+  names,
+  height = 180,
+  xKey = 'name'
+}) => {
+  if (!data?.length) return null;
+  const yFmt = v => v >= 1000 ? `${(v / 1000).toFixed(0)}K` : `${Math.round(v)}`;
+  return /*#__PURE__*/React.createElement(ChartBox, {
+    height: height
+  }, (W, H) => {
+    const p = {
+      l: 42,
+      r: 8,
+      t: 8,
+      b: 36
+    };
+    const w = W - p.l - p.r,
+      h = H - p.t - p.b;
+    const mx = Math.max(...data.flatMap(d => keys.map(k => Math.abs(d[k] || 0))), 1);
+    const bw = w / data.length,
+      gbw = bw / (keys.length + .5);
+    return /*#__PURE__*/React.createElement("svg", {
+      width: W,
+      height: H,
+      style: {
+        display: 'block'
+      }
+    }, [0, .5, 1].map((q, i) => /*#__PURE__*/React.createElement("g", {
+      key: i
+    }, /*#__PURE__*/React.createElement("line", {
+      x1: p.l,
+      x2: W - p.r,
+      y1: p.t + h * (1 - q),
+      y2: p.t + h * (1 - q),
+      stroke: "#e2e8f0",
+      strokeDasharray: "3 3"
+    }), /*#__PURE__*/React.createElement("text", {
+      x: p.l - 4,
+      y: p.t + h * (1 - q) + 3,
+      textAnchor: "end",
+      fill: "#94a3b8",
+      fontSize: "9"
+    }, yFmt(mx * q)))), data.flatMap((d, di) => keys.map((k, ki) => {
+      const v = d[k] || 0,
+        bh = Math.abs(v) / mx * h;
+      return /*#__PURE__*/React.createElement("rect", {
+        key: `${di}-${ki}`,
+        x: p.l + di * bw + ki * gbw + gbw * .2,
+        y: p.t + h - bh,
+        width: gbw * .65,
+        height: bh,
+        fill: typeof colors[ki] === 'function' ? colors[ki](d, di) : colors[ki],
+        rx: 3,
+        opacity: .85
+      });
+    })), data.map((d, i) => /*#__PURE__*/React.createElement("text", {
+      key: i,
+      x: p.l + i * bw + bw / 2,
+      y: H - p.b + 14,
+      textAnchor: "middle",
+      fill: "#64748b",
+      fontSize: "10"
+    }, d[xKey])), names && /*#__PURE__*/React.createElement("g", {
+      transform: `translate(${p.l},${H - 8})`
+    }, names.map((n, i) => /*#__PURE__*/React.createElement("g", {
+      key: i,
+      transform: `translate(${i * 75},0)`
+    }, /*#__PURE__*/React.createElement("rect", {
+      width: 8,
+      height: 8,
+      fill: typeof colors[i] === 'function' ? colors[i]({}, 0) : colors[i],
+      rx: 2
+    }), /*#__PURE__*/React.createElement("text", {
+      x: 11,
+      y: 8,
+      fill: "#64748b",
+      fontSize: "9"
+    }, n)))));
+  });
+};
+const SvgLine = ({
+  data,
+  keys,
+  colors,
+  names,
+  height = 180,
+  xKey = 'name',
+  refLine
+}) => {
+  if (!data?.length) return null;
+  const yFmt = v => v >= 1000 ? `${(v / 1000).toFixed(0)}K` : `${Math.round(v)}`;
+  return /*#__PURE__*/React.createElement(ChartBox, {
+    height: height
+  }, (W, H) => {
+    const p = {
+      l: 42,
+      r: 8,
+      t: 8,
+      b: 36
+    };
+    const w = W - p.l - p.r,
+      h = H - p.t - p.b;
+    const vals = data.flatMap(d => keys.map(k => d[k] || 0));
+    const mx = Math.max(...vals, 1),
+      mn = Math.min(...vals, 0),
+      rng = mx - mn || 1;
+    const toY = v => p.t + h - (v - mn) / rng * h,
+      toX = i => p.l + i / (data.length - 1 || 1) * w;
+    return /*#__PURE__*/React.createElement("svg", {
+      width: W,
+      height: H,
+      style: {
+        display: 'block'
+      }
+    }, [0, .5, 1].map((q, i) => /*#__PURE__*/React.createElement("g", {
+      key: i
+    }, /*#__PURE__*/React.createElement("line", {
+      x1: p.l,
+      x2: W - p.r,
+      y1: p.t + h * (1 - q),
+      y2: p.t + h * (1 - q),
+      stroke: "#e2e8f0",
+      strokeDasharray: "3 3"
+    }), /*#__PURE__*/React.createElement("text", {
+      x: p.l - 4,
+      y: p.t + h * (1 - q) + 3,
+      textAnchor: "end",
+      fill: "#94a3b8",
+      fontSize: "9"
+    }, yFmt(mn + rng * q)))), refLine && (() => {
+      const idx = data.findIndex(d => d[xKey] === refLine.x);
+      if (idx < 0) return null;
+      const rx = toX(idx);
+      return /*#__PURE__*/React.createElement("g", null, /*#__PURE__*/React.createElement("line", {
+        x1: rx,
+        x2: rx,
+        y1: p.t,
+        y2: p.t + h,
+        stroke: refLine.color || C.red,
+        strokeDasharray: "5 5"
+      }), /*#__PURE__*/React.createElement("text", {
+        x: rx + 3,
+        y: p.t + 10,
+        fill: refLine.color || C.red,
+        fontSize: "9",
+        fontWeight: "bold"
+      }, refLine.label || ''));
+    })(), keys.map((k, ki) => {
+      const pts = data.map((d, i) => `${toX(i)},${toY(d[k] || 0)}`).join(' ');
+      return /*#__PURE__*/React.createElement("g", {
+        key: ki
+      }, /*#__PURE__*/React.createElement("polyline", {
+        points: pts,
+        fill: "none",
+        stroke: colors[ki],
+        strokeWidth: 2
+      }), data.map((d, i) => /*#__PURE__*/React.createElement("circle", {
+        key: i,
+        cx: toX(i),
+        cy: toY(d[k] || 0),
+        r: 3,
+        fill: colors[ki]
+      })));
+    }), data.map((d, i) => /*#__PURE__*/React.createElement("text", {
+      key: i,
+      x: toX(i),
+      y: H - p.b + 14,
+      textAnchor: "middle",
+      fill: "#64748b",
+      fontSize: "9"
+    }, d[xKey])), names && /*#__PURE__*/React.createElement("g", {
+      transform: `translate(${p.l},${H - 8})`
+    }, names.map((n, i) => /*#__PURE__*/React.createElement("g", {
+      key: i,
+      transform: `translate(${i * 85},0)`
+    }, /*#__PURE__*/React.createElement("line", {
+      x1: 0,
+      x2: 12,
+      y1: 4,
+      y2: 4,
+      stroke: colors[i],
+      strokeWidth: 2
+    }), /*#__PURE__*/React.createElement("text", {
+      x: 15,
+      y: 8,
+      fill: "#64748b",
+      fontSize: "9"
+    }, n)))));
+  });
+};
+const SvgPie = ({
+  data,
+  colors,
+  height = 180
+}) => {
+  if (!data?.length) return null;
+  const total = data.reduce((s, d) => s + d.value, 0);
+  if (!total) return null;
+  return /*#__PURE__*/React.createElement(ChartBox, {
+    height: height
+  }, (W, H) => {
+    const cx = W / 2,
+      cy = H / 2 - 8,
+      r = Math.min(W, H) / 2 - 28,
+      ir = r * .45;
+    let angle = -Math.PI / 2;
+    const slices = data.map((d, i) => {
+      const pct = d.value / total,
+        a1 = angle,
+        a2 = angle + pct * 2 * Math.PI;
+      angle = a2;
+      const path = `M ${cx + r * Math.cos(a1)} ${cy + r * Math.sin(a1)} A ${r} ${r} 0 ${pct > .5 ? 1 : 0} 1 ${cx + r * Math.cos(a2)} ${cy + r * Math.sin(a2)} L ${cx + ir * Math.cos(a2)} ${cy + ir * Math.sin(a2)} A ${ir} ${ir} 0 ${pct > .5 ? 1 : 0} 0 ${cx + ir * Math.cos(a1)} ${cy + ir * Math.sin(a1)} Z`;
+      const midA = (a1 + a2) / 2,
+        lx = cx + (r + 14) * Math.cos(midA),
+        ly = cy + (r + 14) * Math.sin(midA);
+      return {
+        path,
+        color: colors[i % colors.length],
+        name: d.name,
+        pct,
+        lx,
+        ly,
+        midA
+      };
+    });
+    return /*#__PURE__*/React.createElement("svg", {
+      width: W,
+      height: H,
+      style: {
+        display: 'block'
+      }
+    }, slices.map((s, i) => /*#__PURE__*/React.createElement("path", {
+      key: i,
+      d: s.path,
+      fill: s.color,
+      stroke: "white",
+      strokeWidth: 1.5
+    })), slices.filter(s => s.pct > .06).map((s, i) => /*#__PURE__*/React.createElement("text", {
+      key: i,
+      x: s.lx,
+      y: s.ly,
+      textAnchor: s.midA > Math.PI / 2 && s.midA < 3 * Math.PI / 2 ? "end" : "start",
+      fill: "#475569",
+      fontSize: "8",
+      fontWeight: "600"
+    }, s.name, " ", (s.pct * 100).toFixed(0), "%")));
+  });
+};
+const SvgArea = ({
+  data,
+  dataKey,
+  height = 160,
+  xKey = 'name',
+  color = C.blue,
+  refY
+}) => {
+  if (!data?.length) return null;
+  return /*#__PURE__*/React.createElement(ChartBox, {
+    height: height
+  }, (W, H) => {
+    const p = {
+      l: 42,
+      r: 8,
+      t: 8,
+      b: 28
+    };
+    const w = W - p.l - p.r,
+      h = H - p.t - p.b;
+    const vals = data.map(d => d[dataKey] || 0);
+    const mx = Math.max(...vals, 1),
+      mn = Math.min(...vals, 0),
+      rng = mx - mn || 1;
+    const toY = v => p.t + h - (v - mn) / rng * h,
+      toX = i => p.l + i / (data.length - 1 || 1) * w;
+    const pts = data.map((d, i) => `${toX(i)},${toY(d[dataKey] || 0)}`).join(' ');
+    const areaPts = `${toX(0)},${toY(mn)} ${pts} ${toX(data.length - 1)},${toY(mn)}`;
+    return /*#__PURE__*/React.createElement("svg", {
+      width: W,
+      height: H,
+      style: {
+        display: 'block'
+      }
+    }, [0, .5, 1].map((q, i) => /*#__PURE__*/React.createElement("g", {
+      key: i
+    }, /*#__PURE__*/React.createElement("line", {
+      x1: p.l,
+      x2: W - p.r,
+      y1: p.t + h * (1 - q),
+      y2: p.t + h * (1 - q),
+      stroke: "#e2e8f0",
+      strokeDasharray: "3 3"
+    }), /*#__PURE__*/React.createElement("text", {
+      x: p.l - 4,
+      y: p.t + h * (1 - q) + 3,
+      textAnchor: "end",
+      fill: "#94a3b8",
+      fontSize: "9"
+    }, mn + rng * q >= 1000 ? `${((mn + rng * q) / 1000).toFixed(0)}K` : Math.round(mn + rng * q)))), refY !== undefined && /*#__PURE__*/React.createElement("line", {
+      x1: p.l,
+      x2: W - p.r,
+      y1: toY(refY),
+      y2: toY(refY),
+      stroke: C.red,
+      strokeDasharray: "5 5"
+    }), /*#__PURE__*/React.createElement("polygon", {
+      points: areaPts,
+      fill: color,
+      opacity: .12
+    }), /*#__PURE__*/React.createElement("polyline", {
+      points: pts,
+      fill: "none",
+      stroke: color,
+      strokeWidth: 2
+    }), data.map((d, i) => /*#__PURE__*/React.createElement("circle", {
+      key: i,
+      cx: toX(i),
+      cy: toY(d[dataKey] || 0),
+      r: 2.5,
+      fill: color
+    })), data.map((d, i) => /*#__PURE__*/React.createElement("text", {
+      key: i,
+      x: toX(i),
+      y: H - 4,
+      textAnchor: "middle",
+      fill: "#64748b",
+      fontSize: "8"
+    }, d[xKey])));
+  });
+};
+const SvgComposed = ({
+  data,
+  barKeys,
+  barColors,
+  barNames,
+  lineKey,
+  lineColor,
+  lineName,
+  height = 200,
+  xKey = 'name'
+}) => {
+  if (!data?.length) return null;
+  return /*#__PURE__*/React.createElement(ChartBox, {
+    height: height
+  }, (W, H) => {
+    const p = {
+      l: 42,
+      r: 8,
+      t: 8,
+      b: 36
+    };
+    const w = W - p.l - p.r,
+      h = H - p.t - p.b;
+    const allVals = data.flatMap(d => [...barKeys.map(k => d[k] || 0), d[lineKey] || 0]);
+    const mx = Math.max(...allVals, 1),
+      mn = Math.min(...allVals, 0),
+      rng = mx - mn || 1;
+    const toY = v => p.t + h - (v - mn) / rng * h;
+    const bw = w / data.length,
+      gbw = bw / (barKeys.length + .5);
+    const toX = i => p.l + (i + .5) * (w / data.length);
+    return /*#__PURE__*/React.createElement("svg", {
+      width: W,
+      height: H,
+      style: {
+        display: 'block'
+      }
+    }, [0, .5, 1].map((q, i) => /*#__PURE__*/React.createElement("g", {
+      key: i
+    }, /*#__PURE__*/React.createElement("line", {
+      x1: p.l,
+      x2: W - p.r,
+      y1: p.t + h * (1 - q),
+      y2: p.t + h * (1 - q),
+      stroke: "#e2e8f0",
+      strokeDasharray: "3 3"
+    }), /*#__PURE__*/React.createElement("text", {
+      x: p.l - 4,
+      y: p.t + h * (1 - q) + 3,
+      textAnchor: "end",
+      fill: "#94a3b8",
+      fontSize: "9"
+    }, mn + rng * q >= 1000 ? `${((mn + rng * q) / 1000).toFixed(0)}K` : Math.round(mn + rng * q)))), data.flatMap((d, di) => barKeys.map((k, ki) => {
+      const v = d[k] || 0,
+        bh = (v - mn) / rng * h;
+      return /*#__PURE__*/React.createElement("rect", {
+        key: `${di}-${ki}`,
+        x: p.l + di * bw + ki * gbw + gbw * .2,
+        y: p.t + h - bh,
+        width: gbw * .65,
+        height: bh,
+        fill: barColors[ki],
+        rx: 2,
+        opacity: .7
+      });
+    })), lineKey && (() => {
+      const pts = data.map((d, i) => `${toX(i)},${toY(d[lineKey] || 0)}`).join(' ');
+      return /*#__PURE__*/React.createElement("g", null, /*#__PURE__*/React.createElement("polyline", {
+        points: pts,
+        fill: "none",
+        stroke: lineColor,
+        strokeWidth: 2
+      }), data.map((d, i) => /*#__PURE__*/React.createElement("circle", {
+        key: i,
+        cx: toX(i),
+        cy: toY(d[lineKey] || 0),
+        r: 2.5,
+        fill: lineColor
+      })));
+    })(), data.map((d, i) => /*#__PURE__*/React.createElement("text", {
+      key: i,
+      x: p.l + i * bw + bw / 2,
+      y: H - p.b + 14,
+      textAnchor: "middle",
+      fill: "#64748b",
+      fontSize: "8"
+    }, d[xKey])), /*#__PURE__*/React.createElement("g", {
+      transform: `translate(${p.l},${H - 8})`
+    }, [...barNames.map((n, i) => ({
+      n,
+      c: barColors[i],
+      t: 'rect'
+    })), ...(lineName ? [{
+      n: lineName,
+      c: lineColor,
+      t: 'line'
+    }] : [])].map((item, i) => /*#__PURE__*/React.createElement("g", {
+      key: i,
+      transform: `translate(${i * 68},0)`
+    }, item.t === 'rect' ? /*#__PURE__*/React.createElement("rect", {
+      width: 8,
+      height: 8,
+      fill: item.c,
+      rx: 1
+    }) : /*#__PURE__*/React.createElement("line", {
+      x1: 0,
+      x2: 12,
+      y1: 4,
+      y2: 4,
+      stroke: item.c,
+      strokeWidth: 2
+    }), /*#__PURE__*/React.createElement("text", {
+      x: item.t === 'rect' ? 11 : 15,
+      y: 8,
+      fill: "#64748b",
+      fontSize: "8"
+    }, item.n)))));
+  });
+};
+
+/* ═══ UI COMPONENTS ═══ */
+const Tip = ({
+  text
+}) => {
+  const [s, setS] = useState(false);
+  return /*#__PURE__*/React.createElement("span", {
+    className: "relative inline-block ml-1",
+    onTouchStart: () => setS(!s),
+    onMouseEnter: () => setS(true),
+    onMouseLeave: () => setS(false)
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "text-slate-400 cursor-help text-xs bg-slate-100 rounded-full w-4 h-4 inline-flex items-center justify-center"
+  }, "?"), s && /*#__PURE__*/React.createElement("span", {
+    className: "absolute z-50 bottom-6 left-0 w-56 bg-slate-800 text-white text-xs p-2 rounded-lg shadow-lg"
+  }, text));
+};
+const NumIn = ({
+  value,
+  onChange,
+  prefix = "$",
+  suffix = "",
+  step = 1,
+  min = 0,
+  w = "w-20"
+}) => /*#__PURE__*/React.createElement("div", {
+  className: "flex items-center gap-0.5 bg-blue-50 border border-blue-200 rounded-lg px-2 py-1.5 flex-shrink-0"
+}, prefix && /*#__PURE__*/React.createElement("span", {
+  className: "text-blue-400 text-xs"
+}, prefix), /*#__PURE__*/React.createElement("input", {
+  type: "number",
+  inputMode: "decimal",
+  value: value,
+  onChange: e => onChange(parseFloat(e.target.value) || 0),
+  step: step,
+  min: min,
+  className: `${w} bg-transparent text-blue-700 font-semibold text-right outline-none text-sm`
+}), suffix && /*#__PURE__*/React.createElement("span", {
+  className: "text-blue-400 text-xs ml-0.5"
+}, suffix));
+const Sld = ({
+  value,
+  onChange,
+  min = 0,
+  max = 100,
+  step = 1,
+  label,
+  fmtFn,
+  color = "blue",
+  tip
+}) => /*#__PURE__*/React.createElement("div", {
+  className: "flex items-center gap-2 py-1.5",
+  style: {
+    flexWrap: 'wrap'
+  }
+}, /*#__PURE__*/React.createElement("div", {
+  className: "flex items-center gap-1 flex-shrink-0",
+  style: {
+    minWidth: '120px',
+    maxWidth: '45%'
+  }
+}, /*#__PURE__*/React.createElement("span", {
+  className: "text-xs text-slate-600 leading-tight"
+}, label), tip && /*#__PURE__*/React.createElement(Tip, {
+  text: tip
+})), /*#__PURE__*/React.createElement("input", {
+  type: "range",
+  min: min,
+  max: max,
+  step: step,
+  value: value,
+  onChange: e => onChange(parseFloat(e.target.value)),
+  style: {
+    flex: 1,
+    minWidth: '80px',
+    accentColor: C[color] || C.blue
+  }
+}), /*#__PURE__*/React.createElement("span", {
+  className: "text-xs font-bold text-right flex-shrink-0",
+  style: {
+    color: C[color] || C.blue,
+    minWidth: '52px'
+  }
+}, fmtFn ? fmtFn(value) : value));
+const Card = ({
+  children,
+  className = ""
+}) => /*#__PURE__*/React.createElement("div", {
+  className: `card ${className}`
+}, children);
+const Stat = ({
+  label,
+  value,
+  sub,
+  color = "slate",
+  icon
+}) => /*#__PURE__*/React.createElement("div", {
+  className: "stat-card",
+  style: {
+    borderColor: C[color],
+    background: `${C[color]}0d`
+  }
+}, /*#__PURE__*/React.createElement("div", {
+  className: "text-xs text-slate-500 uppercase tracking-wide leading-none"
+}, icon, " ", label), /*#__PURE__*/React.createElement("div", {
+  className: "text-xl font-bold text-slate-800 mt-1 leading-none"
+}, value), sub && /*#__PURE__*/React.createElement("div", {
+  className: "text-xs text-slate-400 mt-1"
+}, sub));
+const Gauge = ({
+  value,
+  max,
+  label,
+  thresholds,
+  unit = "%"
+}) => {
+  const pct = cl(value / max, 0, 1);
+  const col = thresholds ? value < thresholds[0] ? C.red : value < thresholds[1] ? C.amber : C.green : C.blue;
+  const r = 40,
+    cx = 48,
+    cy = 48;
+  const startA = -135 * Math.PI / 180,
+    endA = (-135 + pct * 270) * Math.PI / 180,
+    bgEnd = 135 * Math.PI / 180;
+  return /*#__PURE__*/React.createElement("div", {
+    className: "gauge-wrap"
+  }, /*#__PURE__*/React.createElement("svg", {
+    width: "96",
+    height: "72",
+    viewBox: "0 0 96 72"
+  }, /*#__PURE__*/React.createElement("path", {
+    d: `M ${cx + r * Math.cos(startA)} ${cy + r * Math.sin(startA)} A ${r} ${r} 0 1 1 ${cx + r * Math.cos(bgEnd)} ${cy + r * Math.sin(bgEnd)}`,
+    fill: "none",
+    stroke: "#e2e8f0",
+    strokeWidth: "7",
+    strokeLinecap: "round"
+  }), pct > 0 && /*#__PURE__*/React.createElement("path", {
+    d: `M ${cx + r * Math.cos(startA)} ${cy + r * Math.sin(startA)} A ${r} ${r} 0 ${pct > .5 ? 1 : 0} 1 ${cx + r * Math.cos(endA)} ${cy + r * Math.sin(endA)}`,
+    fill: "none",
+    stroke: col,
+    strokeWidth: "7",
+    strokeLinecap: "round"
+  }), /*#__PURE__*/React.createElement("text", {
+    x: cx,
+    y: cy - 2,
+    textAnchor: "middle",
+    fill: col,
+    fontSize: "15",
+    fontWeight: "bold"
+  }, typeof value === 'number' ? value.toFixed(1) : value), /*#__PURE__*/React.createElement("text", {
+    x: cx,
+    y: cy + 11,
+    textAnchor: "middle",
+    fill: "#94a3b8",
+    fontSize: "8"
+  }, unit)), /*#__PURE__*/React.createElement("div", {
+    className: "text-xs text-slate-500 font-medium -mt-1.5"
+  }, label));
+};
+const Section = ({
+  title,
+  children,
+  open: initOpen = true,
+  badge
+}) => {
+  const [open, setOpen] = useState(initOpen);
+  return /*#__PURE__*/React.createElement("div", {
+    className: "mb-2 border rounded-xl overflow-hidden bg-white"
+  }, /*#__PURE__*/React.createElement("button", {
+    onClick: () => setOpen(!open),
+    className: "w-full text-left px-3 py-2.5 bg-slate-50 active:bg-slate-100 flex justify-between items-center"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "font-semibold text-xs text-slate-700"
+  }, title), /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center gap-2"
+  }, badge && /*#__PURE__*/React.createElement("span", {
+    className: "text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 font-semibold"
+  }, badge), /*#__PURE__*/React.createElement("span", {
+    className: "text-slate-400 text-sm"
+  }, open ? "▾" : "▸"))), open && /*#__PURE__*/React.createElement("div", {
+    className: "p-3 border-t"
+  }, children));
+};
+
+/* ═══ TABS CONFIG ═══ */
+const TABS = [{
+  n: "Home",
+  i: "📊"
+}, {
+  n: "Overhead",
+  i: "🏗️"
+}, {
+  n: "Labor",
+  i: "👷"
+}, {
+  n: "Pricing",
+  i: "💰"
+}, {
+  n: "Mix",
+  i: "🎯"
+}, {
+  n: "Levers",
+  i: "🎛️"
+}, {
+  n: "Forecast",
+  i: "📈"
+}, {
+  n: "Goals",
+  i: "🏆"
+}];
+
+/* ═══════════════════════════════════════════════════════════════
+   MAIN APP
+   ═══════════════════════════════════════════════════════════════ */
+function App() {
+  const [tab, setTab] = useState(0);
+
+  /* ── STATE ── */
+  const [oh, setOh] = useState({
+    software: [{
+      n: "HouseCall Pro",
+      m: 416.59
+    }, {
+      n: "Notion",
+      m: 47.36
+    }, {
+      n: "Claude AI",
+      m: 46.29
+    }, {
+      n: "CompanyCam",
+      m: 31.72
+    }, {
+      n: "Adobe",
+      m: 22.34
+    }, {
+      n: "Other",
+      m: 68.18
+    }],
+    vehicles: [{
+      n: "Fleet Insurance",
+      m: 343.96
+    }, {
+      n: "Fuel (all)",
+      m: 239.37
+    }, {
+      n: "Parts & Service",
+      m: 107.09
+    }, {
+      n: "Other Vehicle",
+      m: 600.01
+    }],
+    phone: [{
+      n: "AT&T Business",
+      m: 346.82
+    }],
+    rent: [{
+      n: "Shop/Office",
+      m: 295
+    }],
+    insurance: [{
+      n: "GL/Business",
+      m: 213.15
+    }],
+    advertising: [{
+      n: "GoDaddy+Web",
+      m: 134.37
+    }, {
+      n: "Google Ads",
+      m: 41.56
+    }],
+    tools: [{
+      n: "Tools & Supplies",
+      m: 211.66
+    }],
+    taxes: [{
+      n: "Fees/Taxes/Licenses",
+      m: 71.21
+    }],
+    training: [{
+      n: "Training/Travel",
+      m: 81.16
+    }],
+    unverified: [{
+      n: "Sub Checks ⚠️",
+      m: 1255.83
+    }, {
+      n: "MNRD+Misc ⚠️",
+      m: 234.81
+    }]
+  });
+  const [techs, setTechs] = useState([{
+    n: "Brandon",
+    r: 30,
+    h: 2080
+  }, {
+    n: "Devon",
+    r: 25,
+    h: 2080
+  }, {
+    n: "Doug (field)",
+    r: 0,
+    h: 500
+  }]);
+  const [bur, setBur] = useState({
+    wc: 7,
+    fica: 7.65,
+    futa: 2,
+    pto: 3.85,
+    hol: 1.92,
+    health: 5,
+    ineff: 15
+  });
+  const [eff, setEff] = useState(29.5);
+  const [sv, setSv] = useState({
+    hrs: 1.5,
+    mat: 45,
+    mkup: 50,
+    prof: 20,
+    cur: 350
+  });
+  const [dg, setDg] = useState({
+    dh: 0.75,
+    drv: 0.5,
+    cur: 89
+  });
+  const [ins, setIns] = useState({
+    crew: 2,
+    hrs: 8,
+    eq: 3500,
+    mat: 350,
+    mkup: 40,
+    prof: 20,
+    cur: 8500
+  });
+  const [mt, setMt] = useState({
+    vis: 2,
+    hpv: 1.25,
+    mat: 15,
+    mkup: 50,
+    prof: 20,
+    cur: 149
+  });
+  const [mix, setMix] = useState({
+    inst: 30,
+    svc: 150,
+    mnt: 80,
+    trip: 150
+  });
+  const [season, setSeason] = useState([85, 90, 100, 110, 120, 130, 130, 120, 110, 100, 90, 85]);
+  const [grow, setGrow] = useState(10);
+  const [goal, setGoal] = useState(75000);
+
+  /* ═══ CALCULATIONS ═══ */
+  const X = useMemo(() => {
+    const catT = {};
+    let totOH = 0;
+    Object.entries(oh).forEach(([k, items]) => {
+      const a = items.reduce((s, i) => s + i.m * 12, 0);
+      catT[k] = a;
+      totOH += a;
+    });
+    const tBP = Object.values(bur).reduce((s, v) => s + v, 0) / 100;
+    const td = techs.map(t => ({
+      ...t,
+      brd: t.r * (1 + tBP),
+      aBase: t.r * t.h,
+      aBrd: t.r * (1 + tBP) * t.h
+    }));
+    const tH = techs.reduce((s, t) => s + t.h, 0);
+    const tBrdPay = td.reduce((s, t) => s + t.aBrd, 0);
+    const avgB = tH > 0 ? tBrdPay / tH : 0;
+    const e = eff / 100,
+      bH = tH * e,
+      effR = e > 0 ? avgB / e : 0,
+      ohH = bH > 0 ? totOH / bH : 0;
+
+    // Service
+    const sL = avgB * sv.hrs,
+      sM = sv.mat,
+      sMk = sM * sv.mkup / 100,
+      sO = ohH * sv.hrs;
+    const sS = sL + sM + sMk + sO,
+      sP = sS * sv.prof / 100,
+      sPrice = sS + sP;
+    // Diagnostic
+    const dTH = dg.dh + dg.drv,
+      dL = avgB * dTH,
+      dO = ohH * dTH,
+      dPrice = (dL + dO) * (1 + sv.prof / 100);
+    // Install
+    const iL = avgB * ins.hrs * ins.crew,
+      iMk = (ins.eq + ins.mat) * ins.mkup / 100,
+      iO = ohH * ins.hrs * ins.crew;
+    const iS = iL + ins.eq + ins.mat + iMk + iO,
+      iP = iS * ins.prof / 100,
+      iPrice = iS + iP;
+    // Maintenance
+    const mL = avgB * mt.hpv * mt.vis,
+      mM_ = mt.mat * mt.vis,
+      mMk = mM_ * mt.mkup / 100,
+      mO = ohH * mt.hpv * mt.vis;
+    const mS = mL + mM_ + mMk + mO,
+      mP = mS * mt.prof / 100,
+      mPrice = mS + mP;
+    const brkEv = totOH + tBrdPay;
+    const rev = {
+      inst: {
+        cnt: mix.inst,
+        rev: mix.inst * ins.cur,
+        cost: mix.inst * iS,
+        color: C.orange
+      },
+      svc: {
+        cnt: mix.svc,
+        rev: mix.svc * sv.cur,
+        cost: mix.svc * sS,
+        color: C.blue
+      },
+      mnt: {
+        cnt: mix.mnt,
+        rev: mix.mnt * mt.cur,
+        cost: mix.mnt * mS,
+        color: C.purple
+      },
+      trip: {
+        cnt: mix.trip,
+        rev: mix.trip * dg.cur,
+        cost: mix.trip * (dL + dO),
+        color: C.teal
+      }
+    };
+    const tRev = Object.values(rev).reduce((s, r) => s + r.rev, 0);
+    const tCost = Object.values(rev).reduce((s, r) => s + r.cost, 0);
+    const netP = tRev - tCost;
+
+    // Efficiency scenarios
+    const effSc = [20, 25, 30, 35, 40, 45, 50, 55, 60, 65].map(ef => {
+      const bh2 = tH * ef / 100,
+        oh2 = bh2 > 0 ? totOH / bh2 : 0;
+      const minSvc = (avgB * sv.hrs + sv.mat * (1 + sv.mkup / 100) + oh2 * sv.hrs) * (1 + sv.prof / 100);
+      return {
+        eff: ef,
+        lbl: `${ef}%`,
+        bH: Math.round(bh2),
+        ohH: oh2,
+        minSvc,
+        cur: ef === Math.round(eff)
+      };
+    });
+
+    // Levers
+    const levers = [];
+    const mntFix = mPrice - mt.cur,
+      dgFix = dPrice - dg.cur;
+    levers.push({
+      n: "Fix Maintenance Price",
+      up: mntFix * mix.mnt,
+      u: `${fmt(mt.cur)}→${fmt(mPrice)}`,
+      c: C.rose,
+      ez: "Easy win"
+    });
+    levers.push({
+      n: "Fix Diagnostic Price",
+      up: dgFix * mix.trip,
+      u: `${fmt(dg.cur)}→${fmt(dPrice)}`,
+      c: C.amber,
+      ez: "Easy win"
+    });
+    levers.push({
+      n: "+5 Installs/Year",
+      up: 5 * (ins.cur - iS),
+      u: `${mix.inst}→${mix.inst + 5}`,
+      c: C.indigo,
+      ez: "Doable"
+    });
+    levers.push({
+      n: "Service Price +10%",
+      up: sv.cur * .1 * mix.svc,
+      u: `${fmt(sv.cur)}→${fmt(sv.cur * 1.1)}`,
+      c: C.orange,
+      ez: "Doable"
+    });
+    levers.push({
+      n: "+25 Service Calls",
+      up: 25 * (sv.cur - sS),
+      u: `${mix.svc}→${mix.svc + 25}`,
+      c: C.cyan,
+      ez: "Doable"
+    });
+    levers.push({
+      n: "Reduce OH 10%",
+      up: totOH * .1,
+      u: `Cut ${fmtK(totOH * .1)}/yr`,
+      c: C.blue,
+      ez: "Medium"
+    });
+    levers.push({
+      n: "Install Price +10%",
+      up: ins.cur * .1 * mix.inst,
+      u: `${fmt(ins.cur)}→${fmt(ins.cur * 1.1)}`,
+      c: C.purple,
+      ez: "Medium"
+    });
+    levers.push({
+      n: "Efficiency to 35%",
+      up: ohH * sv.hrs * mix.svc - (tH * .35 > 0 ? totOH / (tH * .35) : 0) * sv.hrs * mix.svc,
+      u: `${eff.toFixed(0)}%→35%`,
+      c: C.green,
+      ez: "Work at it"
+    });
+    levers.sort((a, b) => b.up - a.up);
+
+    // Forecast
+    const avgMoRev = tRev / 12;
+    const mos = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    let cum = 0;
+    const fc = mos.map((m, i) => {
+      const r2 = avgMoRev * (season[i] / 100) * (1 + grow / 100);
+      const c2 = tCost / 12 * (season[i] / 100);
+      const p2 = r2 - c2;
+      cum += p2;
+      return {
+        month: m,
+        revenue: r2,
+        cost: c2,
+        profit: p2,
+        cum
+      };
+    });
+
+    // Goal
+    const gGap = goal - netP;
+    const paths = [];
+    if (gGap > 0) {
+      paths.push({
+        m: "Fix underpriced services",
+        ch: `Maint+Diag=${fmtK(mntFix * mix.mnt + dgFix * mix.trip)}`,
+        imp: mntFix * mix.mnt + dgFix * mix.trip,
+        f: "Easy"
+      });
+      paths.push({
+        m: "Raise service price",
+        ch: `+${fmt(gGap / mix.svc)}/call`,
+        imp: gGap,
+        f: gGap / mix.svc < 100 ? "Easy" : "Medium"
+      });
+      paths.push({
+        m: "Add more installs",
+        ch: `+${Math.ceil(gGap / (ins.cur - iS))} installs`,
+        imp: gGap,
+        f: "Medium"
+      });
+      paths.push({
+        m: "Raise install price",
+        ch: `+${fmt(gGap / mix.inst)}/install`,
+        imp: gGap,
+        f: gGap / mix.inst < 500 ? "Easy" : "Hard"
+      });
+      paths.push({
+        m: "Cut overhead",
+        ch: `Cut ${fmtK(gGap)} from OH`,
+        imp: gGap,
+        f: gGap < totOH * .2 ? "Medium" : "Hard"
+      });
+    }
+    return {
+      catT,
+      totOH,
+      tBP,
+      td,
+      tH,
+      tBrdPay,
+      avgB,
+      e,
+      bH,
+      effR,
+      ohH,
+      sL,
+      sM,
+      sMk,
+      sO,
+      sS,
+      sP,
+      sPrice,
+      dL,
+      dO,
+      dPrice,
+      dTH,
+      iL,
+      iMk,
+      iO,
+      iS,
+      iP,
+      iPrice,
+      mL,
+      mM: mt.mat * mt.vis,
+      mMk,
+      mO,
+      mS,
+      mP,
+      mPrice,
+      brkEv,
+      rev,
+      tRev,
+      tCost,
+      netP,
+      effSc,
+      levers,
+      fc,
+      gGap,
+      paths
+    };
+  }, [oh, techs, bur, eff, sv, dg, ins, mt, mix, season, grow, goal]);
+  const updOH = useCallback((cat, idx, val) => {
+    setOh(p => ({
+      ...p,
+      [cat]: p[cat].map((item, i) => i === idx ? {
+        ...item,
+        m: val
+      } : item)
+    }));
+  }, []);
+  const ohCats = [{
+    k: "software",
+    l: "Software",
+    i: "💻"
+  }, {
+    k: "vehicles",
+    l: "Vehicles",
+    i: "🚐"
+  }, {
+    k: "phone",
+    l: "Phone",
+    i: "📱"
+  }, {
+    k: "rent",
+    l: "Rent",
+    i: "🏢"
+  }, {
+    k: "insurance",
+    l: "Insurance",
+    i: "🛡️"
+  }, {
+    k: "advertising",
+    l: "Marketing",
+    i: "📣"
+  }, {
+    k: "tools",
+    l: "Tools",
+    i: "🔧"
+  }, {
+    k: "taxes",
+    l: "Taxes/Fees",
+    i: "🏛️"
+  }, {
+    k: "training",
+    l: "Training",
+    i: "✈️"
+  }, {
+    k: "unverified",
+    l: "⚠️ Unverified",
+    i: "⚠️"
+  }];
+
+  /* ═══ TAB: HOME ═══ */
+  const HomeTab = () => {
+    const pd = [{
+      name: "Service",
+      current: sv.cur,
+      minimum: X.sPrice
+    }, {
+      name: "Diagnostic",
+      current: dg.cur,
+      minimum: X.dPrice
+    }, {
+      name: "Install",
+      current: ins.cur,
+      minimum: X.iPrice
+    }, {
+      name: "Maint/Yr",
+      current: mt.cur,
+      minimum: X.mPrice
+    }];
+    const ohPie = ohCats.map(c => ({
+      name: c.i + " " + c.l,
+      value: X.catT[c.k] || 0
+    })).filter(x => x.value > 0);
+    const pClr = [C.blue, C.orange, C.teal, C.purple, C.green, C.amber, C.pink, C.cyan, C.slate, C.red];
+    return /*#__PURE__*/React.createElement("div", {
+      className: "space-y-3"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "grid grid-cols-2 gap-2"
+    }, /*#__PURE__*/React.createElement(Stat, {
+      label: "Revenue",
+      value: fmtK(X.tRev),
+      sub: `${fmtK(X.tRev / 12)}/mo`,
+      color: "green",
+      icon: "\uD83D\uDCB0"
+    }), /*#__PURE__*/React.createElement(Stat, {
+      label: "Overhead",
+      value: fmtK(X.totOH),
+      sub: `${fmt(X.totOH / 12)}/mo`,
+      color: "red",
+      icon: "\uD83C\uDFD7\uFE0F"
+    }), /*#__PURE__*/React.createElement(Stat, {
+      label: "Break-Even",
+      value: fmtK(X.brkEv),
+      sub: `${fmtK(X.brkEv / 12)}/mo`,
+      color: "amber",
+      icon: "\u2696\uFE0F"
+    }), /*#__PURE__*/React.createElement(Stat, {
+      label: "Gross Profit",
+      value: fmtK(X.netP),
+      sub: fmtP(X.netP / X.tRev) + " margin",
+      color: X.netP > 0 ? "green" : "red",
+      icon: "\uD83D\uDCCA"
+    })), /*#__PURE__*/React.createElement("div", {
+      className: "flex justify-around bg-white rounded-xl shadow-sm border p-2 overflow-x-auto gap-1"
+    }, /*#__PURE__*/React.createElement(Gauge, {
+      value: eff,
+      max: 70,
+      label: "Efficiency",
+      thresholds: [30, 40]
+    }), /*#__PURE__*/React.createElement(Gauge, {
+      value: X.ohH,
+      max: 80,
+      label: "OH/Hour",
+      thresholds: [60, 40]
+    }), /*#__PURE__*/React.createElement(Gauge, {
+      value: X.tRev / X.brkEv * 100,
+      max: 200,
+      label: "Rev vs B/E",
+      thresholds: [100, 130]
+    })), /*#__PURE__*/React.createElement(Card, null, /*#__PURE__*/React.createElement("h3", {
+      className: "font-bold text-slate-700 text-xs mb-2"
+    }, "Pricing Health"), /*#__PURE__*/React.createElement("div", {
+      className: "grid grid-cols-2 gap-2"
+    }, pd.map((p, i) => {
+      const ok = p.current >= p.minimum;
+      const pct = p.minimum > 0 ? ((p.current - p.minimum) / p.minimum * 100).toFixed(0) : 0;
+      return /*#__PURE__*/React.createElement("div", {
+        key: i,
+        className: `rounded-xl p-2.5 border-2 text-center ${ok ? "border-green-300 bg-green-50" : "border-red-300 bg-red-50"}`
+      }, /*#__PURE__*/React.createElement("div", {
+        className: "text-xs text-slate-500"
+      }, p.name), /*#__PURE__*/React.createElement("div", {
+        className: `text-lg font-bold ${ok ? "text-green-700" : "text-red-700"}`
+      }, fmt(p.current)), /*#__PURE__*/React.createElement("div", {
+        className: "text-xs text-slate-400"
+      }, "Min: ", fmt(p.minimum)), /*#__PURE__*/React.createElement("div", {
+        className: `text-xs font-semibold ${ok ? "text-green-600" : "text-red-600"}`
+      }, ok ? `+${pct}% ✅` : `${pct}% ⚠️`));
+    }))), /*#__PURE__*/React.createElement(Card, null, /*#__PURE__*/React.createElement("h3", {
+      className: "font-bold text-slate-700 text-xs mb-1"
+    }, "Current vs Minimum Pricing"), /*#__PURE__*/React.createElement(SvgBar, {
+      data: pd,
+      keys: ["current", "minimum"],
+      colors: [C.blue, C.amber],
+      names: ["Current", "Minimum"],
+      xKey: "name",
+      height: 180
+    })), /*#__PURE__*/React.createElement(Card, null, /*#__PURE__*/React.createElement("h3", {
+      className: "font-bold text-slate-700 text-xs mb-1"
+    }, "Overhead Breakdown"), /*#__PURE__*/React.createElement(SvgPie, {
+      data: ohPie,
+      colors: pClr,
+      height: 180
+    })), /*#__PURE__*/React.createElement(Card, null, /*#__PURE__*/React.createElement("h3", {
+      className: "font-bold text-slate-700 text-xs mb-1"
+    }, "Efficiency vs Min Service Call"), /*#__PURE__*/React.createElement(SvgLine, {
+      data: X.effSc,
+      keys: ["minSvc", "ohH"],
+      colors: [C.blue, C.amber],
+      names: ["Min Svc Call", "OH/Hour"],
+      xKey: "lbl",
+      height: 180,
+      refLine: {
+        x: `${Math.round(eff)}%`,
+        color: C.red,
+        label: "YOU"
+      }
+    })));
+  };
+
+  /* ═══ TAB: OVERHEAD ═══ */
+  const OHTab = () => /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(Card, {
+    className: "mb-3"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex justify-between items-center"
+  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    className: "text-xs text-slate-500"
+  }, "Annual Overhead"), /*#__PURE__*/React.createElement("div", {
+    className: "text-2xl font-bold"
+  }, fmt(X.totOH))), /*#__PURE__*/React.createElement("div", {
+    className: "text-right text-xs text-slate-500"
+  }, /*#__PURE__*/React.createElement("div", null, "Monthly: ", fmt(X.totOH / 12)), /*#__PURE__*/React.createElement("div", null, "Per Billable Hr: ", fmtD(X.ohH))))), ohCats.map(cat => /*#__PURE__*/React.createElement(Section, {
+    key: cat.k,
+    title: `${cat.i} ${cat.l}`,
+    badge: fmt(X.catT[cat.k]) + "/yr",
+    open: false
+  }, oh[cat.k].map((item, idx) => /*#__PURE__*/React.createElement("div", {
+    key: idx,
+    className: "flex items-center gap-2 py-1.5 flex-wrap"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "text-xs text-slate-600",
+    style: {
+      minWidth: '100px'
+    }
+  }, item.n), /*#__PURE__*/React.createElement(NumIn, {
+    value: item.m,
+    onChange: v => updOH(cat.k, idx, v),
+    suffix: "/mo"
+  }), /*#__PURE__*/React.createElement("span", {
+    className: "text-xs text-slate-400"
+  }, fmt(item.m * 12), "/yr"))))));
+
+  /* ═══ TAB: LABOR ═══ */
+  const LaborTab = () => /*#__PURE__*/React.createElement("div", {
+    className: "space-y-3"
+  }, /*#__PURE__*/React.createElement(Card, null, /*#__PURE__*/React.createElement("h3", {
+    className: "font-bold text-xs text-slate-700 mb-2"
+  }, "Tech Rates"), X.td.map((t, i) => /*#__PURE__*/React.createElement("div", {
+    key: i,
+    className: "flex items-center gap-2 py-1.5 border-b flex-wrap"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "text-xs font-medium",
+    style: {
+      minWidth: '80px'
+    }
+  }, t.n), /*#__PURE__*/React.createElement(NumIn, {
+    value: t.r,
+    onChange: v => setTechs(p => p.map((x, j) => j === i ? {
+      ...x,
+      r: v
+    } : x)),
+    w: "w-14"
+  }), /*#__PURE__*/React.createElement("span", {
+    className: "text-xs text-slate-400"
+  }, "/hr \u2192 ", fmtD(t.brd), " burdened"), /*#__PURE__*/React.createElement("span", {
+    className: "text-xs text-slate-400 ml-auto"
+  }, fmt(t.aBrd), "/yr"))), /*#__PURE__*/React.createElement("div", {
+    className: "flex justify-between mt-2 text-xs font-bold text-slate-600"
+  }, /*#__PURE__*/React.createElement("span", null, "Total Annual Labor"), /*#__PURE__*/React.createElement("span", null, fmt(X.tBrdPay)))), /*#__PURE__*/React.createElement(Card, null, /*#__PURE__*/React.createElement("h3", {
+    className: "font-bold text-xs text-slate-700 mb-2"
+  }, "Burden Rate: ", fmtP(X.tBP)), Object.entries(bur).map(([k, v]) => /*#__PURE__*/React.createElement(Sld, {
+    key: k,
+    label: {
+      wc: "Workers' Comp",
+      fica: "FICA",
+      futa: "FUTA/SUTA",
+      pto: "PTO",
+      hol: "Holidays",
+      health: "Health Ins",
+      ineff: "Inefficiency"
+    }[k],
+    value: v,
+    onChange: val => setBur(p => ({
+      ...p,
+      [k]: val
+    })),
+    min: 0,
+    max: 25,
+    step: 0.1,
+    fmtFn: v => `${v.toFixed(1)}%`,
+    color: k === "ineff" ? "red" : "blue"
+  }))), /*#__PURE__*/React.createElement(Card, null, /*#__PURE__*/React.createElement("h3", {
+    className: "font-bold text-xs text-slate-700 mb-2"
+  }, "Billable Efficiency"), /*#__PURE__*/React.createElement(Sld, {
+    label: "Current Efficiency",
+    value: eff,
+    onChange: setEff,
+    min: 10,
+    max: 75,
+    step: 0.5,
+    fmtFn: v => `${v.toFixed(1)}%`,
+    color: eff < 30 ? "red" : eff < 40 ? "amber" : "green",
+    tip: "% of available hours that are billable. Industry avg: 35-45%"
+  }), /*#__PURE__*/React.createElement("div", {
+    className: "grid grid-cols-3 gap-2 mt-3"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "bg-slate-50 rounded-xl p-2.5 text-center"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "text-xs text-slate-400"
+  }, "Available"), /*#__PURE__*/React.createElement("div", {
+    className: "text-lg font-bold"
+  }, X.tH.toLocaleString()), /*#__PURE__*/React.createElement("div", {
+    className: "text-xs text-slate-300"
+  }, "hrs")), /*#__PURE__*/React.createElement("div", {
+    className: "bg-blue-50 rounded-xl p-2.5 text-center"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "text-xs text-blue-400"
+  }, "Billable"), /*#__PURE__*/React.createElement("div", {
+    className: "text-lg font-bold text-blue-700"
+  }, Math.round(X.bH).toLocaleString()), /*#__PURE__*/React.createElement("div", {
+    className: "text-xs text-blue-300"
+  }, "hrs")), /*#__PURE__*/React.createElement("div", {
+    className: `rounded-xl p-2.5 text-center ${eff < 30 ? "bg-red-50" : "bg-green-50"}`
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "text-xs text-slate-400"
+  }, "Effective $/Hr"), /*#__PURE__*/React.createElement("div", {
+    className: `text-lg font-bold ${eff < 30 ? "text-red-700" : "text-green-700"}`
+  }, fmtD(X.effR))))));
+
+  /* ═══ TAB: PRICING ═══ */
+  const PriceCard = ({
+    title,
+    icon,
+    inputs,
+    breakdown,
+    minPrice,
+    curPrice
+  }) => {
+    const gap = curPrice - minPrice,
+      ok = gap >= 0;
+    return /*#__PURE__*/React.createElement(Card, {
+      className: `border-l-4 ${ok ? "border-l-green-400" : "border-l-red-400"}`
+    }, /*#__PURE__*/React.createElement("h3", {
+      className: "font-bold text-sm mb-2"
+    }, icon, " ", title), /*#__PURE__*/React.createElement("div", {
+      className: "space-y-0.5 mb-3"
+    }, inputs), /*#__PURE__*/React.createElement("div", {
+      className: "border-t pt-2 space-y-1"
+    }, breakdown.map(([lbl, val], i) => /*#__PURE__*/React.createElement("div", {
+      key: i,
+      className: `flex justify-between text-xs ${lbl.includes("SUB") ? "font-semibold border-t pt-1" : ""}`
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "text-slate-600"
+    }, lbl), /*#__PURE__*/React.createElement("span", {
+      className: "font-mono"
+    }, fmtD(val))))), /*#__PURE__*/React.createElement("div", {
+      className: `mt-3 pt-2 border-t-2 ${ok ? "border-green-400" : "border-red-400"} flex justify-between items-end`
+    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+      className: "text-xs text-slate-400"
+    }, "MIN PRICE"), /*#__PURE__*/React.createElement("div", {
+      className: `text-xl font-bold ${ok ? "text-green-700" : "text-red-700"}`
+    }, fmt(minPrice))), /*#__PURE__*/React.createElement("div", {
+      className: "text-right"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "text-xs text-slate-400"
+    }, "Current: ", fmt(curPrice)), /*#__PURE__*/React.createElement("div", {
+      className: `text-xs font-bold ${ok ? "text-green-600" : "text-red-600"}`
+    }, ok ? `+${fmt(gap)} ✅` : `${fmt(gap)} ⚠️`))));
+  };
+  const PricingTab = () => /*#__PURE__*/React.createElement("div", {
+    className: "space-y-3"
+  }, /*#__PURE__*/React.createElement(PriceCard, {
+    title: "Service Call",
+    icon: "\uD83D\uDD27",
+    curPrice: sv.cur,
+    minPrice: X.sPrice,
+    inputs: /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Sld, {
+      label: "Duration",
+      value: sv.hrs,
+      onChange: v => setSv(p => ({
+        ...p,
+        hrs: v
+      })),
+      min: 0.5,
+      max: 4,
+      step: 0.25,
+      fmtFn: v => `${v}h`
+    }), /*#__PURE__*/React.createElement(Sld, {
+      label: "Materials $",
+      value: sv.mat,
+      onChange: v => setSv(p => ({
+        ...p,
+        mat: v
+      })),
+      min: 0,
+      max: 500,
+      step: 5,
+      fmtFn: v => fmt(v)
+    }), /*#__PURE__*/React.createElement(Sld, {
+      label: "Material Markup",
+      value: sv.mkup,
+      onChange: v => setSv(p => ({
+        ...p,
+        mkup: v
+      })),
+      min: 0,
+      max: 100,
+      step: 5,
+      fmtFn: v => `${v}%`
+    }), /*#__PURE__*/React.createElement(Sld, {
+      label: "Profit Target",
+      value: sv.prof,
+      onChange: v => setSv(p => ({
+        ...p,
+        prof: v
+      })),
+      min: 0,
+      max: 40,
+      step: 1,
+      fmtFn: v => `${v}%`,
+      color: "green"
+    }), /*#__PURE__*/React.createElement(Sld, {
+      label: "Current Price",
+      value: sv.cur,
+      onChange: v => setSv(p => ({
+        ...p,
+        cur: v
+      })),
+      min: 50,
+      max: 800,
+      step: 10,
+      fmtFn: v => fmt(v),
+      color: "amber"
+    })),
+    breakdown: [["Labor (burdened)", X.sL], ["Materials", X.sM], ["Material Markup", X.sMk], ["Overhead Recovery", X.sO], ["SUBTOTAL", X.sS], ["Net Profit", X.sP]]
+  }), /*#__PURE__*/React.createElement(PriceCard, {
+    title: "Installation",
+    icon: "\uD83C\uDFE0",
+    curPrice: ins.cur,
+    minPrice: X.iPrice,
+    inputs: /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Sld, {
+      label: "Crew Size",
+      value: ins.crew,
+      onChange: v => setIns(p => ({
+        ...p,
+        crew: v
+      })),
+      min: 1,
+      max: 4,
+      step: 1,
+      fmtFn: v => `${v}`
+    }), /*#__PURE__*/React.createElement(Sld, {
+      label: "Duration",
+      value: ins.hrs,
+      onChange: v => setIns(p => ({
+        ...p,
+        hrs: v
+      })),
+      min: 4,
+      max: 16,
+      step: 0.5,
+      fmtFn: v => `${v}h`
+    }), /*#__PURE__*/React.createElement(Sld, {
+      label: "Equipment Cost",
+      value: ins.eq,
+      onChange: v => setIns(p => ({
+        ...p,
+        eq: v
+      })),
+      min: 1000,
+      max: 12000,
+      step: 100,
+      fmtFn: v => fmtK(v)
+    }), /*#__PURE__*/React.createElement(Sld, {
+      label: "Materials",
+      value: ins.mat,
+      onChange: v => setIns(p => ({
+        ...p,
+        mat: v
+      })),
+      min: 50,
+      max: 1500,
+      step: 25,
+      fmtFn: v => fmt(v)
+    }), /*#__PURE__*/React.createElement(Sld, {
+      label: "Markup %",
+      value: ins.mkup,
+      onChange: v => setIns(p => ({
+        ...p,
+        mkup: v
+      })),
+      min: 10,
+      max: 80,
+      step: 5,
+      fmtFn: v => `${v}%`
+    }), /*#__PURE__*/React.createElement(Sld, {
+      label: "Profit Target",
+      value: ins.prof,
+      onChange: v => setIns(p => ({
+        ...p,
+        prof: v
+      })),
+      min: 0,
+      max: 40,
+      step: 1,
+      fmtFn: v => `${v}%`,
+      color: "green"
+    }), /*#__PURE__*/React.createElement(Sld, {
+      label: "Current Price",
+      value: ins.cur,
+      onChange: v => setIns(p => ({
+        ...p,
+        cur: v
+      })),
+      min: 3000,
+      max: 20000,
+      step: 250,
+      fmtFn: v => fmtK(v),
+      color: "amber"
+    })),
+    breakdown: [["Labor (burdened)", X.iL], ["Equipment", ins.eq], ["Materials", ins.mat], ["Markup", X.iMk], ["Overhead Recovery", X.iO], ["SUBTOTAL", X.iS], ["Net Profit", X.iP]]
+  }), /*#__PURE__*/React.createElement(PriceCard, {
+    title: "Maintenance (Annual)",
+    icon: "\uD83D\uDCCB",
+    curPrice: mt.cur,
+    minPrice: X.mPrice,
+    inputs: /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Sld, {
+      label: "Visits/Year",
+      value: mt.vis,
+      onChange: v => setMt(p => ({
+        ...p,
+        vis: v
+      })),
+      min: 1,
+      max: 4,
+      step: 1,
+      fmtFn: v => `${v}`
+    }), /*#__PURE__*/React.createElement(Sld, {
+      label: "Hours/Visit",
+      value: mt.hpv,
+      onChange: v => setMt(p => ({
+        ...p,
+        hpv: v
+      })),
+      min: 0.5,
+      max: 3,
+      step: 0.25,
+      fmtFn: v => `${v}h`
+    }), /*#__PURE__*/React.createElement(Sld, {
+      label: "Materials/Visit",
+      value: mt.mat,
+      onChange: v => setMt(p => ({
+        ...p,
+        mat: v
+      })),
+      min: 0,
+      max: 100,
+      step: 5,
+      fmtFn: v => fmt(v)
+    }), /*#__PURE__*/React.createElement(Sld, {
+      label: "Profit Target",
+      value: mt.prof,
+      onChange: v => setMt(p => ({
+        ...p,
+        prof: v
+      })),
+      min: 0,
+      max: 40,
+      step: 1,
+      fmtFn: v => `${v}%`,
+      color: "green"
+    }), /*#__PURE__*/React.createElement(Sld, {
+      label: "Current Price",
+      value: mt.cur,
+      onChange: v => setMt(p => ({
+        ...p,
+        cur: v
+      })),
+      min: 49,
+      max: 500,
+      step: 10,
+      fmtFn: v => fmt(v),
+      color: "amber"
+    })),
+    breakdown: [["Labor (all visits)", X.mL], ["Materials", X.mM], ["Material Markup", X.mMk], ["Overhead Recovery", X.mO], ["SUBTOTAL", X.mS], ["Net Profit", X.mP]]
+  }), /*#__PURE__*/React.createElement(PriceCard, {
+    title: "Diagnostic / Trip Charge",
+    icon: "\uD83D\uDE90",
+    curPrice: dg.cur,
+    minPrice: X.dPrice,
+    inputs: /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Sld, {
+      label: "Diag Time",
+      value: dg.dh,
+      onChange: v => setDg(p => ({
+        ...p,
+        dh: v
+      })),
+      min: 0.25,
+      max: 2,
+      step: 0.25,
+      fmtFn: v => `${v}h`
+    }), /*#__PURE__*/React.createElement(Sld, {
+      label: "Drive Time RT",
+      value: dg.drv,
+      onChange: v => setDg(p => ({
+        ...p,
+        drv: v
+      })),
+      min: 0.25,
+      max: 1.5,
+      step: 0.25,
+      fmtFn: v => `${v}h`
+    }), /*#__PURE__*/React.createElement(Sld, {
+      label: "Current Price",
+      value: dg.cur,
+      onChange: v => setDg(p => ({
+        ...p,
+        cur: v
+      })),
+      min: 29,
+      max: 250,
+      step: 5,
+      fmtFn: v => fmt(v),
+      color: "amber"
+    })),
+    breakdown: [["Labor (burdened)", X.dL], ["Overhead Recovery", X.dO], ["× Profit Margin", X.dPrice - X.dL - X.dO]]
+  }));
+
+  /* ═══ TAB: REVENUE MIX ═══ */
+  const MixTab = () => {
+    const mixData = [{
+      name: "Installs",
+      count: mix.inst,
+      revenue: X.rev.inst.rev,
+      cost: X.rev.inst.cost,
+      profit: X.rev.inst.rev - X.rev.inst.cost,
+      color: C.orange
+    }, {
+      name: "Service",
+      count: mix.svc,
+      revenue: X.rev.svc.rev,
+      cost: X.rev.svc.cost,
+      profit: X.rev.svc.rev - X.rev.svc.cost,
+      color: C.blue
+    }, {
+      name: "Maint",
+      count: mix.mnt,
+      revenue: X.rev.mnt.rev,
+      cost: X.rev.mnt.cost,
+      profit: X.rev.mnt.rev - X.rev.mnt.cost,
+      color: C.purple
+    }, {
+      name: "Trip/Diag",
+      count: mix.trip,
+      revenue: X.rev.trip.rev,
+      cost: X.rev.trip.cost,
+      profit: X.rev.trip.rev - X.rev.trip.cost,
+      color: C.teal
+    }];
+    const revPie = mixData.map(d => ({
+      name: d.name,
+      value: d.revenue
+    }));
+    return /*#__PURE__*/React.createElement("div", {
+      className: "space-y-3"
+    }, /*#__PURE__*/React.createElement(Card, null, /*#__PURE__*/React.createElement("h3", {
+      className: "font-bold text-xs text-slate-700 mb-2"
+    }, "Annual Job Mix"), /*#__PURE__*/React.createElement(Sld, {
+      label: "Installs/Year",
+      value: mix.inst,
+      onChange: v => setMix(p => ({
+        ...p,
+        inst: v
+      })),
+      min: 0,
+      max: 100,
+      step: 1,
+      fmtFn: v => `${v}`,
+      color: "orange"
+    }), /*#__PURE__*/React.createElement(Sld, {
+      label: "Service Calls",
+      value: mix.svc,
+      onChange: v => setMix(p => ({
+        ...p,
+        svc: v
+      })),
+      min: 0,
+      max: 500,
+      step: 5,
+      fmtFn: v => `${v}`,
+      color: "blue"
+    }), /*#__PURE__*/React.createElement(Sld, {
+      label: "Maintenance Agmts",
+      value: mix.mnt,
+      onChange: v => setMix(p => ({
+        ...p,
+        mnt: v
+      })),
+      min: 0,
+      max: 300,
+      step: 5,
+      fmtFn: v => `${v}`,
+      color: "purple"
+    }), /*#__PURE__*/React.createElement(Sld, {
+      label: "Trip/Diag Charges",
+      value: mix.trip,
+      onChange: v => setMix(p => ({
+        ...p,
+        trip: v
+      })),
+      min: 0,
+      max: 500,
+      step: 5,
+      fmtFn: v => `${v}`,
+      color: "teal"
+    }), /*#__PURE__*/React.createElement("div", {
+      className: "mt-2"
+    }, /*#__PURE__*/React.createElement(SvgPie, {
+      data: revPie,
+      colors: [C.orange, C.blue, C.purple, C.teal],
+      height: 160
+    }))), /*#__PURE__*/React.createElement("div", {
+      className: "grid grid-cols-2 gap-2"
+    }, /*#__PURE__*/React.createElement(Stat, {
+      label: "Total Revenue",
+      value: fmtK(X.tRev),
+      sub: `${fmtK(X.tRev / 12)}/mo`,
+      color: "green",
+      icon: "\uD83D\uDCB0"
+    }), /*#__PURE__*/React.createElement(Stat, {
+      label: "Direct Costs",
+      value: fmtK(X.tCost),
+      color: "red",
+      icon: "\uD83D\uDCC9"
+    }), /*#__PURE__*/React.createElement(Stat, {
+      label: "Gross Profit",
+      value: fmtK(X.netP),
+      sub: `${fmtP(X.netP / X.tRev)} margin`,
+      color: X.netP > 0 ? "green" : "red",
+      icon: "\uD83D\uDCCA"
+    }), /*#__PURE__*/React.createElement(Stat, {
+      label: "vs Break-Even",
+      value: X.tRev > X.brkEv ? `+${fmtK(X.tRev - X.brkEv)}` : `-${fmtK(X.brkEv - X.tRev)}`,
+      sub: X.tRev > X.brkEv ? "Above ✅" : "Below ⚠️",
+      color: X.tRev > X.brkEv ? "green" : "red",
+      icon: "\u2696\uFE0F"
+    })), /*#__PURE__*/React.createElement(Card, null, /*#__PURE__*/React.createElement("h3", {
+      className: "font-bold text-xs text-slate-700 mb-1"
+    }, "Revenue vs Cost by Type"), /*#__PURE__*/React.createElement(SvgBar, {
+      data: mixData,
+      keys: ["revenue", "cost", "profit"],
+      colors: [C.green, C.red, C.blue],
+      names: ["Revenue", "Cost", "Profit"],
+      height: 200
+    })), /*#__PURE__*/React.createElement(Card, null, /*#__PURE__*/React.createElement("h3", {
+      className: "font-bold text-xs text-slate-700 mb-2"
+    }, "Profit per Job"), /*#__PURE__*/React.createElement("div", {
+      className: "grid grid-cols-2 gap-2"
+    }, mixData.map((d, i) => /*#__PURE__*/React.createElement("div", {
+      key: i,
+      className: "text-center p-2.5 rounded-xl",
+      style: {
+        background: `${d.color}12`,
+        borderLeft: `4px solid ${d.color}`
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "text-xs text-slate-500"
+    }, d.name), /*#__PURE__*/React.createElement("div", {
+      className: "text-lg font-bold",
+      style: {
+        color: d.color
+      }
+    }, fmt(d.count > 0 ? d.profit / d.count : 0)), /*#__PURE__*/React.createElement("div", {
+      className: "text-xs text-slate-400"
+    }, "profit/job"), /*#__PURE__*/React.createElement("div", {
+      className: "text-xs text-slate-400"
+    }, fmtP(d.revenue > 0 ? (d.revenue - d.cost) / d.revenue : 0), " margin"))))));
+  };
+
+  /* ═══ TAB: LEVERS ═══ */
+  const LeversTab = () => {
+    const maxImp = Math.max(...X.levers.map(l => Math.abs(l.up)), 1);
+    return /*#__PURE__*/React.createElement("div", {
+      className: "space-y-3"
+    }, /*#__PURE__*/React.createElement(Card, null, /*#__PURE__*/React.createElement("h3", {
+      className: "font-bold text-slate-700 text-sm mb-1"
+    }, "Profit Levers \u2014 Ranked"), /*#__PURE__*/React.createElement("p", {
+      className: "text-xs text-slate-400 mb-3"
+    }, "Which actions move profit the most?"), /*#__PURE__*/React.createElement("div", {
+      className: "space-y-2.5"
+    }, X.levers.filter(l => l.up > 0).map((lever, i) => /*#__PURE__*/React.createElement("div", {
+      key: i
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "flex justify-between items-baseline mb-0.5"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "text-xs font-medium text-slate-700"
+    }, lever.n), /*#__PURE__*/React.createElement("div", {
+      className: "text-xs font-bold",
+      style: {
+        color: lever.c
+      }
+    }, "+", fmtK(lever.up), "/yr")), /*#__PURE__*/React.createElement("div", {
+      className: "relative h-5 bg-slate-100 rounded-full overflow-hidden"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "absolute left-0 top-0 h-full rounded-full",
+      style: {
+        width: `${Math.min(100, lever.up / maxImp * 100)}%`,
+        backgroundColor: lever.c,
+        opacity: .75
+      }
+    })), /*#__PURE__*/React.createElement("div", {
+      className: "flex justify-between text-xs text-slate-400 mt-0.5"
+    }, /*#__PURE__*/React.createElement("span", null, lever.u), /*#__PURE__*/React.createElement("span", null, lever.ez)))))), /*#__PURE__*/React.createElement(Card, null, /*#__PURE__*/React.createElement("h3", {
+      className: "font-bold text-slate-700 text-xs mb-1"
+    }, "Efficiency Scenarios"), /*#__PURE__*/React.createElement(SvgLine, {
+      data: X.effSc,
+      keys: ["minSvc", "ohH"],
+      colors: [C.blue, C.amber],
+      names: ["Min Svc Call", "OH/Hour"],
+      xKey: "lbl",
+      height: 200,
+      refLine: {
+        x: `${Math.round(eff)}%`,
+        color: C.red,
+        label: "YOU"
+      }
+    })));
+  };
+
+  /* ═══ TAB: FORECAST ═══ */
+  const ForecastTab = () => /*#__PURE__*/React.createElement("div", {
+    className: "space-y-3"
+  }, /*#__PURE__*/React.createElement(Card, null, /*#__PURE__*/React.createElement("h3", {
+    className: "font-bold text-xs text-slate-700 mb-2"
+  }, "Seasonal Factors ", /*#__PURE__*/React.createElement(Tip, {
+    text: "100% = average. Summer A/C and winter heating drive peaks."
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "grid grid-cols-6 gap-1.5 mb-3"
+  }, ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"].map((m, i) => /*#__PURE__*/React.createElement("div", {
+    key: i,
+    className: "text-center"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "text-xs text-slate-400 mb-0.5"
+  }, m), /*#__PURE__*/React.createElement("input", {
+    type: "number",
+    inputMode: "numeric",
+    value: season[i],
+    onChange: e => {
+      const v = [...season];
+      v[i] = parseInt(e.target.value) || 0;
+      setSeason(v);
+    },
+    className: "w-full text-center text-xs bg-blue-50 border border-blue-200 rounded-lg py-1.5 text-blue-700 font-semibold"
+  }), /*#__PURE__*/React.createElement("div", {
+    className: "text-xs text-slate-300"
+  }, "%")))), /*#__PURE__*/React.createElement(Sld, {
+    label: "Growth %",
+    value: grow,
+    onChange: setGrow,
+    min: -20,
+    max: 50,
+    step: 1,
+    fmtFn: v => `${v > 0 ? "+" : ""}${v}%`,
+    color: grow > 0 ? "green" : "red"
+  })), /*#__PURE__*/React.createElement(Card, null, /*#__PURE__*/React.createElement("h3", {
+    className: "font-bold text-xs text-slate-700 mb-1"
+  }, "12-Month Revenue Forecast"), /*#__PURE__*/React.createElement(SvgComposed, {
+    data: X.fc,
+    barKeys: ["revenue", "cost"],
+    barColors: [C.green, C.red],
+    barNames: ["Revenue", "Cost"],
+    lineKey: "profit",
+    lineColor: C.blue,
+    lineName: "Profit",
+    xKey: "month",
+    height: 220
+  })), /*#__PURE__*/React.createElement(Card, null, /*#__PURE__*/React.createElement("h3", {
+    className: "font-bold text-xs text-slate-700 mb-1"
+  }, "Cumulative Profit"), /*#__PURE__*/React.createElement(SvgArea, {
+    data: X.fc,
+    dataKey: "cum",
+    xKey: "month",
+    color: C.indigo,
+    height: 160,
+    refY: 0
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "grid grid-cols-3 gap-2"
+  }, /*#__PURE__*/React.createElement(Stat, {
+    label: "Projected Rev",
+    value: fmtK(X.fc.reduce((s, f) => s + f.revenue, 0)),
+    color: "green",
+    icon: "\uD83D\uDCC8"
+  }), /*#__PURE__*/React.createElement(Stat, {
+    label: "Projected Profit",
+    value: fmtK(X.fc[X.fc.length - 1]?.cum || 0),
+    color: X.fc[X.fc.length - 1]?.cum > 0 ? "green" : "red",
+    icon: "\uD83D\uDCB0"
+  }), /*#__PURE__*/React.createElement(Stat, {
+    label: "Best Month",
+    value: X.fc.reduce((best, f) => f.revenue > best.revenue ? f : best, X.fc[0])?.month || "—",
+    sub: fmt(Math.max(...X.fc.map(f => f.revenue))),
+    color: "blue",
+    icon: "\u2B50"
+  })));
+
+  /* ═══ TAB: GOALS ═══ */
+  const GoalsTab = () => {
+    const progress = goal > 0 ? cl(X.netP / goal, 0, 2) : 0;
+    return /*#__PURE__*/React.createElement("div", {
+      className: "space-y-3"
+    }, /*#__PURE__*/React.createElement(Card, null, /*#__PURE__*/React.createElement("h3", {
+      className: "font-bold text-slate-700 text-sm mb-2"
+    }, "Annual Profit Target"), /*#__PURE__*/React.createElement(Sld, {
+      label: "Profit Goal",
+      value: goal,
+      onChange: setGoal,
+      min: 10000,
+      max: 300000,
+      step: 5000,
+      fmtFn: v => fmtK(v),
+      color: "green"
+    }), /*#__PURE__*/React.createElement("div", {
+      className: "mt-3 relative h-7 bg-slate-100 rounded-full overflow-hidden"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "absolute left-0 top-0 h-full rounded-full transition-all",
+      style: {
+        width: `${Math.min(100, progress * 100)}%`,
+        background: progress >= 1 ? `linear-gradient(90deg,${C.green},${C.lime})` : `linear-gradient(90deg,${C.red},${C.amber})`
+      }
+    }), /*#__PURE__*/React.createElement("div", {
+      className: "absolute inset-0 flex items-center justify-center text-xs font-bold text-slate-700"
+    }, fmt(X.netP), " / ", fmtK(goal), " (", (progress * 100).toFixed(0), "%)")), /*#__PURE__*/React.createElement("div", {
+      className: `mt-2 text-center text-sm font-bold ${X.gGap <= 0 ? "text-green-600" : "text-red-600"}`
+    }, X.gGap <= 0 ? `🎉 ${fmtK(Math.abs(X.gGap))} ABOVE your goal!` : `Need ${fmtK(X.gGap)} more to hit target`)), X.gGap > 0 && /*#__PURE__*/React.createElement(Card, null, /*#__PURE__*/React.createElement("h3", {
+      className: "font-bold text-slate-700 text-sm mb-2"
+    }, "Paths to Your Goal"), /*#__PURE__*/React.createElement("p", {
+      className: "text-xs text-slate-400 mb-3"
+    }, "Ways to close the ", fmtK(X.gGap), " gap \u2014 combine for best results"), /*#__PURE__*/React.createElement("div", {
+      className: "space-y-2"
+    }, X.paths.map((path, i) => /*#__PURE__*/React.createElement("div", {
+      key: i,
+      className: `p-2.5 rounded-xl border ${path.f === "Easy" ? "border-green-200 bg-green-50" : path.f === "Medium" ? "border-amber-200 bg-amber-50" : "border-slate-200 bg-slate-50"}`
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "flex justify-between items-start"
+    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+      className: "font-semibold text-xs"
+    }, path.m), /*#__PURE__*/React.createElement("div", {
+      className: "text-xs text-slate-500 mt-0.5"
+    }, path.ch)), /*#__PURE__*/React.createElement("div", {
+      className: "text-right"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "text-xs font-bold text-green-700"
+    }, "+", fmtK(path.imp)), /*#__PURE__*/React.createElement("div", {
+      className: `text-xs font-medium ${path.f === "Easy" ? "text-green-600" : path.f === "Medium" ? "text-amber-600" : "text-slate-400"}`
+    }, path.f === "Easy" ? "✅ Easy win" : path.f === "Medium" ? "⚡ Doable" : "🔧 Harder"))))))), /*#__PURE__*/React.createElement(Card, null, /*#__PURE__*/React.createElement("h3", {
+      className: "font-bold text-slate-700 text-xs mb-1"
+    }, "Min Svc Call by Efficiency"), /*#__PURE__*/React.createElement(SvgBar, {
+      data: X.effSc.slice(0, 8),
+      keys: ["minSvc"],
+      colors: [C.blue],
+      xKey: "lbl",
+      height: 180
+    })));
+  };
+
+  /* ═══ RENDER ═══ */
+  const tabs = [HomeTab, OHTab, LaborTab, PricingTab, MixTab, LeversTab, ForecastTab, GoalsTab];
+  const TabContent = tabs[tab];
+  return /*#__PURE__*/React.createElement("div", {
+    style: {
+      minHeight: '100vh',
+      paddingBottom: '80px'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: 'linear-gradient(135deg,#0f172a 0%,#1e3a5f 50%,#0f172a 100%)',
+      color: '#fff',
+      padding: '12px 16px',
+      position: 'sticky',
+      top: 0,
+      zIndex: 50
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center justify-between"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center gap-2.5"
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: '28px'
+    }
+  }, "\u2744\uFE0F"), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    className: "text-sm font-bold tracking-tight"
+  }, "Comfort Air Technologies"), /*#__PURE__*/React.createElement("div", {
+    className: "text-xs",
+    style: {
+      color: '#93c5fd'
+    }
+  }, "Net Profit Pricing Pro"))), /*#__PURE__*/React.createElement("div", {
+    className: "flex gap-3 text-right"
+  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    className: "text-xs",
+    style: {
+      color: '#93c5fd',
+      lineHeight: 1
+    }
+  }, "Rev"), /*#__PURE__*/React.createElement("div", {
+    className: "text-sm font-bold"
+  }, fmtK(X.tRev))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    className: "text-xs",
+    style: {
+      color: '#93c5fd',
+      lineHeight: 1
+    }
+  }, "Profit"), /*#__PURE__*/React.createElement("div", {
+    className: `text-sm font-bold ${X.netP > 0 ? "text-green-400" : "text-red-400"}`
+  }, fmtK(X.netP)))))), /*#__PURE__*/React.createElement("div", {
+    className: "px-3 pt-3 tab-content",
+    key: tab
+  }, /*#__PURE__*/React.createElement(TabContent, null)), /*#__PURE__*/React.createElement("div", {
+    className: "bottom-nav"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex justify-around items-center",
+    style: {
+      maxWidth: '600px',
+      margin: '0 auto',
+      padding: '6px 4px 2px'
+    }
+  }, TABS.map((t, i) => /*#__PURE__*/React.createElement("button", {
+    key: i,
+    onClick: () => setTab(i),
+    className: "flex flex-col items-center gap-0.5 px-1 py-1 rounded-lg transition-all",
+    style: {
+      minWidth: '40px',
+      opacity: tab === i ? 1 : .5,
+      transform: tab === i ? 'scale(1.05)' : 'scale(1)'
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: '20px',
+      lineHeight: 1
+    }
+  }, t.i), /*#__PURE__*/React.createElement("span", {
+    className: `text-xs font-medium ${tab === i ? 'text-blue-600' : 'text-slate-400'}`,
+    style: {
+      fontSize: '9px',
+      lineHeight: 1
+    }
+  }, t.n), tab === i && /*#__PURE__*/React.createElement("div", {
+    style: {
+      width: '4px',
+      height: '4px',
+      borderRadius: '50%',
+      background: '#2563eb',
+      marginTop: '1px'
+    }
+  }))))));
+}
+
+/* ═══ MOUNT ═══ */
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(/*#__PURE__*/React.createElement(App, null));
+setTimeout(() => {
+  const s = document.getElementById('splash');
+  if (s) s.classList.add('done');
+  setTimeout(() => {
+    if (s) s.remove();
+  }, 500);
+}, 800);</script>
+</body>
+</html>
